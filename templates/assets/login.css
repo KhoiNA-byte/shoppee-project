@@ -9,7 +9,7 @@ input[type=text], input[type=password] {
   }
   
   /* Set a style for all buttons */
-  button {
+  .button {
     background-color: #04AA6D;
     color: white;
     padding: 14px 20px;
@@ -46,3 +46,7 @@ input[type=text], input[type=password] {
       width: 100%;
     }
   } 
+
+  .footer h2{
+    background-color: #04AA6D;
+  }

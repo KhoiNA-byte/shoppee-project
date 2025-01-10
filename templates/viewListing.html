@@ -4,7 +4,6 @@
     <head>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
         <title>Shoopee</title>
 
     </head>
@@ -12,116 +11,168 @@
         <header style="background-color: tomato;padding: 32px;">
             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                 {{if .User.Username}}
+                <a class="btn btn-dark me-md-2 btn-sm" href="/addBalance">{{.UserBalances.Balance}}.000₫</a>
+                <a class="btn btn-dark me-md-2 btn-sm" href="/addToCart"><i class="bi bi-cart"></i></a>
                 <a class="btn btn-dark me-md-2 btn-sm" href="/"><i class="bi bi-person-circle"></i> {{.User.Username}}</a>
                 <a class="btn btn-dark me-md-2 btn-sm" href="/logout">Logout <i class="bi bi-box-arrow-in-right"></i></a>
 
                 {{else}}
+                
                 <a class="btn btn-dark me-md-2 btn-sm" href="/login">Login <i class="bi bi-box-arrow-in-right"></i></a>
                 <a class="btn btn-dark me-md-2 btn-sm" href="/signup">Signup <i class="bi bi-box-arrow-in-right"></i></a>
 
                 {{end}}
             </div>
             <div class="container">
-                <form action="http://localhost:8080/viewListing#" name="searchKey" method="get" autocomplete="off">
-                    <div class="row g-3 align-items-center">
-                        <div class="col-auto">
-                            <a href="https://shopee.vn/">
-                                <img src="/public/pics/wallhaven-28869x_1920x1080.png" class="img-fluid" width="50" height="50" alt="...">
-                            </a>
-                        </div>
-                        <div class="col">
-                            <input autofocus name="q" type="text" class="form-control form-control-lg mx-auto">
-                        </div>
-                        <div class="col-auto">
-                            <button class="btn btn-dark" type="submit" ><i class="bi bi-search"></i></button>
-                        </div>
+                <form method="get" autocomplete="off" >
+                <div class="row g-3 align-items-center">
+                    <div class="col-auto">
+                        <a href="/">
+                            <img src="/public/pics/wallhaven-28869x_1920x1080.png" class="img-fluid" width="50" height="50" alt="...">
+                        </a>
                     </div>
-                </form>
+                    <div class="col">
+                        <input autofocus type="text" name="searchKey" class="form-control form-control-lg mx-auto">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-dark" type="submit" ><i class="bi bi-search"></i></button>
+                    </div>
+                </div>
             </div>
         </header>
-        <div>
-            <nav class="navbar bg-body-tertiary">
-                <div class="container">
-                  <a class="navbar-brand" href="">
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-incognito"></i>-Clothes</a>
-                    </div>
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-bag-heart"></i>-Beauty Appliances</a>
-                    </div>
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-book"></i>-Books</a>
-                    </div>
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-dribbble"></i>-Toys</a>
-                    </div>
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-lamp"></i>-Home Appliances</a>
-                    </div>
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-phone"></i>-Smart Devices</a>
-                    </div>
-                    <div class="col-auto">
-                        <a class="btn btn-dark" href=""><i class="bi bi-cake"></i>-Foods</a>
-                    </div>
-                    {{if .User.Username}}
+        <!-- <div> -->
+
+                        <!-- <form method="get" autocomplete="off"> -->
+                            <!-- <div class="col-auto">
+                                <input type="radio" class="btn-check" name="categoryKey" id="category4" autocomplete="off" value="Toys">
+                                <label class="btn btn-dark" style="margin-right: 40px;" for="category4"><i class="bi bi-dribbble"></i>-Toys</label>
+
+                                <input type="radio" class="btn-check" name="categoryKey" id="category2" autocomplete="off" value="Books">
+                                <label class="btn btn-dark" style="margin-right: 40px;" for="category2"><i class="bi bi-book"></i>-Books</label>
+
+                                <input type="radio" class="btn-check"  name="categoryKey" id="category1" autocomplete="off" value="Clothes">
+                                <label class="btn btn-dark" style="margin-right: 40px;" for="category1"><i class="bi bi-incognito"></i>-Clothes</label>
+
+                                <input type="radio" class="btn-check" name="categoryKey" id="category7" autocomplete="off" value="Foods">
+                                <label class="btn btn-dark" style="margin-right: 40px;" for="category7"><i class="bi bi-cake"></i>-Foods</label>
+
+                                <input type="radio" class="btn-check" name="categoryKey" id="category6" autocomplete="off" value="SmartDevices">
+                                <label class="btn btn-dark" style="margin-right: 40px;" for="category6"><i class="bi bi-phone"></i>-Smart Devices</label>
+
+                                <input type="radio" class="btn-check" name="categoryKey" id="category5" autocomplete="off" value="HomeAppliances">
+                                <label class="btn btn-dark" style="margin-right: 40px;" for="category5"><i class="bi bi-lamp"></i>-Home Appliances</label>
+
+                                <input type="radio" class="btn-check" name="categoryKey" id="category3" autocomplete="off" value="BeautyAppliances">
+                                <label class="btn btn-dark" style="margin-right: 100px;" for="category3"><i class="bi bi-bag-heart"></i>-Beauty Appliances</label>
+
+                                <input class="btn btn-dark" type="reset" value="Reset">
+                            </div> -->
+                        <!-- </form> -->
+                            <!-- <div class="col-auto">
+                                <a class="btn btn-dark" href=""><i class="bi bi-bag-heart"></i>-Beauty Appliances</a>
+                            </div> -->
+                            <!-- <div class="col-auto">
+                                <a class="btn btn-dark" href=""><i class="bi bi-book"></i>-Books</a>
+                            </div>
+                            <div class="col-auto">
+                                <a class="btn btn-dark" href=""><i class="bi bi-dribbble"></i>-Toys</a>
+                            </div>  
+                            <div class="col-auto">
+                                <a class="btn btn-dark" href=""><i class="bi bi-lamp"></i>-Home Appliances</a>
+                            </div>
+                            <div class="col-auto">
+                                <a class="btn btn-dark" href=""><i class="bi bi-phone"></i>-Smart Devices</a>
+                            </div>
+                            <div class="col-auto">
+                                <a class="btn btn-dark" href=""><i class="bi bi-cake"></i>-Foods</a>
+                            </div> -->
+                            <!-- <div class="col-auto"> -->
+                                <!-- <button class="btn btn-dark" type="submit" ><i class="bi bi-search"></i></button> -->
+                            <!-- </div>
+                        </form> -->
+
+
+                    <!-- {{if .User.Username}}
                     <div class="col-auto">
                         <a class="btn btn-info" href="/listing">Create Listing</a>
                     </div>
-                    {{end}}
-                  </a>
-                </div>
-            </nav>
-        </div> 
+                    {{end}} -->
+        <!-- </div>  -->
         <body>
+            <div>
+                <nav class="navbar navbar-expand-lg bg-body-tertiary">
+                    <div class="container-fluid" style="padding: 0 50px;">
+                        <a class="navbar-brand" href="/">Shopee</a>
+                      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                      </button>
+                      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0 nav-underline">
+                          <li class="nav-item">
+                            <a class="nav-link" aria-current="page" href="/">Home</a>
+                          </li>
+                          <li class="nav-item">
+                            <a class="nav-link active" href="/viewListing">Market</a>
+                          </li>
+                          {{if .User.Username}}
+                          <li class="nav-item">
+                            <a class="nav-link" href="/createListing">Sale</a>
+                          </li>
+                          {{end}}
+                        </ul>
+                      </div>
+                    </div>
+                  </nav>
+            </div>
             <div class="mt-4">
                 <div class="container-sm p-0 bg-body-tertiary">
                     <div class="d-flex flex-row mb-0 justify-content-between">
-                        <div class="p-0">
-                            <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-                                <input type="radio" class="btn-check" name="btnradio" id="btnradio1" autocomplete="off" checked>
-                                <label class="btn btn-dark btn-lg rounded-0" for="btnradio1">Radio 1</label>
-                              
-                                <input type="radio" class="btn-check" name="btnradio" id="btnradio2" autocomplete="off">
-                                <label class="btn btn-dark btn-lg rounded-0" for="btnradio2">Radio 2</label>
-                              </div>                                 
+                        <div class="p-0">                                
                         </div>
-
                         <div class="p-1">
-                            <div class="dropdown-center">
-                                <button type="button" class="btn btn-dark dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+                            <div class="btn-toolbar p-0" role="toolbar" aria-label="Toolbar with button groups">
+                                <div class="dropdown-center">
+                                  <button type="button" class="btn btn-dark dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
                                     Price Range
                                   </button>
-                                  <form class="dropdown-menu p-4">
+                                  <div class="dropdown-menu p-1">
                                     <div class="mb-2">
                                         <div class="input-group">
-                                            <span class="input-group-text">₫</span>
-                                            <input type="text" class="form-control" name="price" placeholder="Min price">
+                                            <!-- <span class="input-group-text">₫</span> -->
+                                            <input type="text" class="form-control" name="minprice" placeholder="Min">
+                                            <span class="input-group-text">.000₫</span>
+
                                         </div>
                                     </div>
                                     <div class="mb-2">
                                         <div class="input-group">
-                                            <span class="input-group-text">₫</span>
-                                            <input type="text" class="form-control" name="price" placeholder="Min price">
+                                            <!-- <span class="input-group-text">₫</span> -->
+                                            <input type="text" class="form-control" name="maxprice" placeholder="Max">
+                                            <span class="input-group-text">.000₫</span>
+
                                         </div>
                                     </div>
                                     <div class="d-inline">
-                                        <input class="btn btn-outline-light" type="reset" value="Reset">
-                                        <button type="submit" class="btn btn-outline-light">Confirm</button>
+                                        <input class="btn btn-sm btn-outline-light" type="reset" value="Reset">
+                                        <button type="submit" class="btn btn-sm btn-outline-light">Confirm</button>
                                     </div>
-                                  </form>
-                                
-                                <button class="btn btn-dark dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                  Sort
-                                </button>
-                                <ul class="dropdown-menu">
-                                  <li><a class="dropdown-item" href="#">Default</a></li>
-                                  <li><a class="dropdown-item" href="#">Price <i class="bi bi-arrow-up"></i></a></li>
-                                  <li><a class="dropdown-item" href="#">Price <i class="bi bi-arrow-down"></i></a></li>
-                                </ul>
-                            </div>
+                                  </div>
+                                </div>
+                                <div>
+                                    <select class="form-select" aria-label="Default select example" name="categoryKey">
+                                        <option selected value="">Category</option>
+                                        <option value="Toys">Toys</option>
+                                        <option value="Books">Books</option>
+                                        <option value="Clothes">Clothes</option>
+                                        <option value="Foods">Foods</option>
+                                        <option value="SmartDevices">Smart Devices</option>
+                                        <option value="HomeAppliances">Home Appliances</option>
+                                        <option value="BeautyAppliances">Beauty Appliances</option>
+                                    </select>
+                                    </form>
+                                </div>
+                            </div>                                
                         </div>
-                    </div>
                 </div>
 
                 <div class="container-sm p-4 bg-body-secondary">
@@ -132,15 +183,34 @@
                               <img src="/public/pics/{{.Screenshot}}" class="card-img-top" width="50" height="150" alt="...">
                             <div class="card-body">                                  
                               <h5 class="card-title text-truncate">{{.Name}}</h5>
-                              <h5 class="card-text" style="color: rgb(224, 106, 85);">₫{{.Price}}.000</h5>
-                              <a href="#" class="btn btn-secondary">View</a>
+                              <h5 class="card-text" style="color: rgb(224, 106, 85);">{{.Price}}.000₫</h5>
+                              <a href="/detailListing?screenshotId={{.Screenshot}}" class="btn btn-secondary">View</a>
                             </div>
                         </div>
                       </div>
                     {{end}}
                     </div>
+                    <!-- <nav aria-label="Page navigation example">
+                        <ul class="pagination pagination-lg justify-content-center" style="margin-right: 50px;">
+                          <li class="page-item disabled">
+                            <a class="page-link" href="#" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                              </a>
+                          </li>
+                          <li class="page-item"><a class="page-link" href="#he">1</a></li>
+                          <li class="page-item"><a class="page-link" href="#">2</a></li>
+                          <li class="page-item"><a class="page-link" href="#">3</a></li>
+                          <li class="page-item">
+                            <a class="page-link" href="#" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                              </a>
+                          </li>
+                        </ul>
+                      </nav> -->
                 </div>
+                </div> 
             </div> 
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
         </body>
 
 
