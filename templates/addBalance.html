@@ -11,8 +11,15 @@
           <div class="d-grid gap-2 d-md-flex justify-content-md-end">
             {{if .User.Username}}
             <a class="btn btn-dark me-md-2 btn-sm" href="/addBalance">{{.UserBalances.Balance}}.000₫</a>
-            <a class="btn btn-dark me-md-2 btn-sm" href="/"><i class="bi bi-cart"></i></a>
-            <a class="btn btn-dark me-md-2 btn-sm text-truncate" href="/"><i class="bi bi-person-circle"></i> {{.User.Username}}</a>
+            <a class="btn btn-dark me-md-2 btn-sm position-relative" href="/addToCart">
+              <i class="bi bi-cart"></i>
+              {{if gt .UserCart.TotalItems 0}}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-secondary">
+                {{.UserCart.TotalItems}}
+                </span>
+              {{end}}
+            </a>
+            <a class="btn btn-dark me-md-2 btn-sm text-truncate" href="//historyBuy"><i class="bi bi-person-circle"></i> {{.User.Username}}</a>
             <a class="btn btn-dark me-md-2 btn-sm" href="/logout">Logout <i class="bi bi-box-arrow-in-right"></i></a>
             
             {{else}}
@@ -50,7 +57,7 @@
                   </nav>
                 </div>
                 <div class="mt-4">
-                    <div class="container-sm p-0 bg-body-tertiary">
+                    <div class="container-sm p-0 bg-body-dark">
                     <form  method="post">
                         <div class="mb-4">
                             <h3>Deposit</h3>
@@ -80,8 +87,8 @@
                                     {{.SuccessMessage}}
                                 </div>
                               {{end}}
-                            <div>
-                                <button class="btn btn-primary" type="submit">Submit form</button>
+                            <div class="my-3">
+                                <button class="btn btn-primary" type="submit">Confirm</button>
                                 <p id="demo"></p>
                             </div>
                           </form>

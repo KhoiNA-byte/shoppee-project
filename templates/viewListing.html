@@ -12,8 +12,15 @@
             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                 {{if .User.Username}}
                 <a class="btn btn-dark me-md-2 btn-sm" href="/addBalance">{{.UserBalances.Balance}}.000₫</a>
-                <a class="btn btn-dark me-md-2 btn-sm" href="/addToCart"><i class="bi bi-cart"></i></a>
-                <a class="btn btn-dark me-md-2 btn-sm" href="/"><i class="bi bi-person-circle"></i> {{.User.Username}}</a>
+                <a class="btn btn-dark me-md-2 btn-sm position-relative" href="/addToCart">
+                    <i class="bi bi-cart"></i>
+                    {{if gt .UserCart.TotalItems 0}}
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-secondary">
+                        {{.UserCart.TotalItems}}
+                      </span>
+                    {{end}}
+                  </a>
+                <a class="btn btn-dark me-md-2 btn-sm" href="/historyBuy"><i class="bi bi-person-circle"></i> {{.User.Username}}</a>
                 <a class="btn btn-dark me-md-2 btn-sm" href="/logout">Logout <i class="bi bi-box-arrow-in-right"></i></a>
 
                 {{else}}
@@ -165,9 +172,9 @@
                                         <option value="Books">Books</option>
                                         <option value="Clothes">Clothes</option>
                                         <option value="Foods">Foods</option>
-                                        <option value="SmartDevices">Smart Devices</option>
-                                        <option value="HomeAppliances">Home Appliances</option>
-                                        <option value="BeautyAppliances">Beauty Appliances</option>
+                                        <option value="Smart Devices">Smart Devices</option>
+                                        <option value="Home Appliances">Home Appliances</option>
+                                        <option value="Beauty Appliances">Beauty Appliances</option>
                                     </select>
                                     </form>
                                 </div>
@@ -190,23 +197,31 @@
                       </div>
                     {{end}}
                     </div>
-                    <!-- <nav aria-label="Page navigation example">
-                        <ul class="pagination pagination-lg justify-content-center" style="margin-right: 50px;">
-                          <li class="page-item disabled">
-                            <a class="page-link" href="#" aria-label="Previous">
-                                <span aria-hidden="true">&laquo;</span>
-                              </a>
-                          </li>
-                          <li class="page-item"><a class="page-link" href="#he">1</a></li>
-                          <li class="page-item"><a class="page-link" href="#">2</a></li>
-                          <li class="page-item"><a class="page-link" href="#">3</a></li>
-                          <li class="page-item">
-                            <a class="page-link" href="#" aria-label="Next">
-                                <span aria-hidden="true">&raquo;</span>
-                              </a>
-                          </li>
-                        </ul>
-                      </nav> -->
+                    <div class="row mt-3">
+                        <div class="col-md-2"></div>
+                        <div class="col-md-10 text-center my-3">
+                            <a href="/viewListing?page=1&searchKey={{.SearchKey}}&minprice={{.MinPrice}}&maxprice={{.MaxPrice}}&categoryKey={{.CategoryKey}}" class="btn btn-dark {{if eq .Page 1}}disabled{{end}}">
+                                <i class="bi bi-caret-left"></i>
+                            </a>
+                            
+                            <a href="/viewListing?page={{sub .Page 1}}&searchKey={{.SearchKey}}&minprice={{.MinPrice}}&maxprice={{.MaxPrice}}&categoryKey={{.CategoryKey}}" class="btn btn-secondary {{if eq .Page 1}}disabled{{end}}">
+                                <i class="bi bi-caret-left-fill"></i>
+                            </a>
+                            
+                            <a href="/viewListing?page={{add .Page 1}}&searchKey={{.SearchKey}}&minprice={{.MinPrice}}&maxprice={{.MaxPrice}}&categoryKey={{.CategoryKey}}" class="btn btn-secondary {{if eq .Page .TotalPage}}disabled{{end}}">
+                                <i class="bi bi-caret-right-fill"></i>
+                            </a>
+                            
+                            <a href="/viewListing?page={{.TotalPage}}&searchKey={{.SearchKey}}&minprice={{.MinPrice}}&maxprice={{.MaxPrice}}&categoryKey={{.CategoryKey}}" class="btn btn-dark {{if eq .Page .TotalPage}}disabled{{end}}">
+                                <i class="bi bi-caret-right"></i>
+                            </a>
+                            
+                        
+                            <span class="mx-3">Page {{.Page}} / {{.TotalPage}}</span>
+                        </div>
+                        
+                        
+                    </div>
                 </div>
                 </div> 
             </div> 

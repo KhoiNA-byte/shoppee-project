@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"math"
 	"strconv"
+	"time"
 
 	// "net/url"
 	// "image/png"
@@ -54,8 +57,15 @@ type cartItem struct {
 }
 
 type userCart struct {
-	Username  string     `bson:"username,omitempty"`
-	CartItems []cartItem `bson:"items,omitempty"`
+	Username   string     `bson:"username,omitempty"`
+	CartItems  []cartItem `bson:"items,omitempty"`
+	TotalItems int
+}
+type historyDocument struct {
+	Username    string     `bson:"username"`
+	Items       []cartItem `bson:"items"`
+	Total       int        `bson:"total"`
+	PurchasedAt time.Time  `bson:"purchasedAt"`
 }
 
 var tpl *template.Template
@@ -63,7 +73,17 @@ var dbUsers = map[string]user{}
 var dbSessions = map[string]string{}
 
 func init() {
-	tpl = template.Must(template.ParseGlob("templates/*.html"))
+	tpl = template.Must(template.New("").Funcs(template.FuncMap{
+		"mul": func(a, b int) int {
+			return a * b
+		},
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"sub": func(a, b int) int {
+			return a - b
+		},
+	}).ParseGlob("templates/*.html"))
 }
 
 func main() {
@@ -79,6 +99,7 @@ func main() {
 	http.HandleFunc("/detailListing", detailListing)
 	http.HandleFunc("/addBalance", addBalance)
 	http.HandleFunc("/addToCart", addToCart)
+	http.HandleFunc("/historyBuy", historyBuy)
 
 	// http.Handle("/templates/assets/", http.StripPrefix("/templates/assets", http.FileServer(http.Dir("./assets"))))
 	http.Handle("/public/", http.StripPrefix("/public", http.FileServer(http.Dir("./public"))))
@@ -262,18 +283,22 @@ func index(res http.ResponseWriter, req *http.Request) {
 	}
 	uBalance := getUserWithBalance(res, req)
 	u := getUser(res, req)
-	records := DisplayAllRecords(res, req)
+	uCart := getUserWithCart(res, req)
+	records, _ := DisplayAllRecords(res, req, 1, 15)
 	templateinput := struct {
 		User         user
 		Records      []item
 		UserBalances userBalance
+		UserCart     userCart
 	}{
 		User:         u,
-		Records:      records[:15],
+		Records:      records,
 		UserBalances: uBalance,
+		UserCart:     uCart,
 	}
 	tpl.ExecuteTemplate(res, "index.html", templateinput)
 }
+
 func createListing(res http.ResponseWriter, req *http.Request) {
 	if !AlreadyLoggedin(req) {
 		http.Redirect(res, req, "/", http.StatusSeeOther)
@@ -352,6 +377,7 @@ func addBalance(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	uBalance := getUserWithBalance(res, req)
+	uCart := getUserWithCart(res, req)
 	var balanceInfo userBalance
 	var existingBalance userBalance
 	var errorMessage string
@@ -385,12 +411,14 @@ func addBalance(res http.ResponseWriter, req *http.Request) {
 				ErrorMessage   string
 				SuccessMessage string
 				UserBalances   userBalance
+				UserCart       userCart
 			}{
 				User:           u,
 				BalanceInfo:    balanceInfo,
 				ErrorMessage:   errorMessage,
 				SuccessMessage: successMessage,
 				UserBalances:   uBalance,
+				UserCart:       uCart,
 			})
 			return
 		}
@@ -411,22 +439,24 @@ func addBalance(res http.ResponseWriter, req *http.Request) {
 			}
 			successMessage = fmt.Sprintf("Balance updated successfully! New balance: %d.000₫", newBalance)
 			log.Printf("Balance updated successfully for user: %s, new balance: %d.000₫", username, newBalance)
+
 		}
 	}
 	u := getUser(res, req)
-
 	templateinput := struct {
 		User           user
 		BalanceInfo    userBalance
 		ErrorMessage   string
 		SuccessMessage string
 		UserBalances   userBalance
+		UserCart       userCart
 	}{
 		User:           u,
 		BalanceInfo:    balanceInfo,
 		ErrorMessage:   errorMessage,
 		SuccessMessage: successMessage,
 		UserBalances:   uBalance,
+		UserCart:       uCart,
 	}
 
 	tpl.ExecuteTemplate(res, "addBalance.html", templateinput)
@@ -439,20 +469,120 @@ func addToCart(res http.ResponseWriter, req *http.Request) {
 	}
 
 	u := getUser(res, req)
-	// allRecords := DisplayAllRecords(res, req)
 	uBalance := getUserWithBalance(res, req)
 	uCart := getUserWithCart(res, req)
 
+	successMessage := ""
+
+	if req.Method == http.MethodPost {
+		ctx := req.Context()
+		database := ConnectDB(ctx).Database("shoppeeDB")
+		shopcollection := database.Collection("Carts")
+		shopcollection1 := database.Collection("Balances")
+
+		if itemName := req.FormValue("update"); itemName != "" {
+			quantityStr := req.FormValue("quantity-" + itemName)
+			quantity, err := strconv.Atoi(quantityStr)
+			if err == nil && quantity > 0 {
+				filter := bson.M{"username": u.Username, "items.name": itemName}
+				update := bson.M{"$set": bson.M{"items.$.quantity": quantity}}
+				_, err := shopcollection.UpdateOne(ctx, filter, update)
+				if err != nil {
+					log.Printf("Error buying: %v", err)
+				}
+			}
+		}
+
+		if itemName := req.FormValue("delete"); itemName != "" {
+			filter := bson.M{"username": u.Username}
+			update := bson.M{"$pull": bson.M{"items": bson.M{"name": itemName}}}
+			_, err := shopcollection.UpdateOne(ctx, filter, update)
+			if err != nil {
+				log.Printf("Error buying: %v", err)
+			}
+		}
+
+		if req.FormValue("buy") == "buyNow" {
+			selectedItemsJSON := req.FormValue("selectedItems")
+			if selectedItemsJSON != "" {
+				var selectedItems []cartItem
+				err := json.Unmarshal([]byte(selectedItemsJSON), &selectedItems)
+				if err == nil {
+					// 🛠 Fill missing Screenshot from uCart
+					for i := range selectedItems {
+						for _, cartItem := range uCart.CartItems {
+							if selectedItems[i].Name == cartItem.Name {
+								selectedItems[i].Screenshot = cartItem.Screenshot
+								break
+							}
+						}
+					}
+
+					totalCost := 0
+					for _, item := range selectedItems {
+						totalCost += item.Price * item.Quantity
+					}
+
+					if uBalance.Balance >= totalCost {
+						newBalance := uBalance.Balance - totalCost
+						_, err1 := shopcollection1.UpdateOne(ctx, bson.M{"username": u.Username}, bson.M{"$set": bson.M{"balance": newBalance}})
+						if err1 == nil {
+							for _, item := range selectedItems {
+								sellerFilter := bson.M{"username": item.Seller}
+								var sellerBalance userBalance
+								err := shopcollection1.FindOne(ctx, sellerFilter).Decode(&sellerBalance)
+								if err == nil {
+									newSellerBalance := sellerBalance.Balance + (item.Price * item.Quantity)
+									shopcollection1.UpdateOne(ctx, sellerFilter, bson.M{"$set": bson.M{"balance": newSellerBalance}})
+								}
+							}
+							itemNames := make([]string, 0, len(selectedItems))
+							for _, item := range selectedItems {
+								itemNames = append(itemNames, item.Name)
+							}
+							shopcollection.UpdateOne(ctx, bson.M{"username": u.Username}, bson.M{
+								"$pull": bson.M{"items": bson.M{"name": bson.M{"$in": itemNames}}},
+							})
+							successMessage = "Check Out successfully!"
+							historyCollection := database.Collection("Histories")
+
+							purchaseRecord := bson.M{
+								"username":    u.Username,
+								"items":       selectedItems,
+								"total":       totalCost,
+								"purchasedAt": time.Now(),
+							}
+							log.Println("success")
+							_, err := historyCollection.InsertOne(ctx, purchaseRecord)
+							if err != nil {
+								log.Println("Failed to record purchase history:", err)
+							}
+						}
+					} else {
+						http.Error(res, "Insufficient funds", http.StatusBadRequest)
+						return
+					}
+				}
+			}
+		}
+
+		// Refresh data after operations
+		uCart = getUserWithCart(res, req)
+		uBalance = getUserWithBalance(res, req)
+	}
+
 	templateinput := struct {
-		User user
-		// Records      []item
-		UserBalances userBalance
-		CartItems    []cartItem
+		User           user
+		UserBalances   userBalance
+		CartItems      []cartItem
+		SuccessMessage string
+		UserCart       userCart
 	}{
-		User: u,
-		// Records:      allRecords,
-		UserBalances: uBalance,
-		CartItems:    uCart.CartItems,
+		User:           u,
+		UserBalances:   uBalance,
+		CartItems:      uCart.CartItems,
+		SuccessMessage: successMessage,
+		UserCart:       uCart,
 	}
 
 	tpl.ExecuteTemplate(res, "addToCart.html", templateinput)
@@ -460,58 +590,82 @@ func addToCart(res http.ResponseWriter, req *http.Request) {
 
 func viewListing(res http.ResponseWriter, req *http.Request) {
 	u := getUser(res, req)
-	allRecords := DisplayAllRecords(res, req)
-	searchRecords := SearchRecords(res, req)
 	uBalance := getUserWithBalance(res, req)
+	uCart := getUserWithCart(res, req)
 
-	if searchRecords == nil {
-		templateinput := struct {
-			User         user
-			Records      []item
-			UserBalances userBalance
-		}{
-			User:         u,
-			Records:      allRecords,
-			UserBalances: uBalance,
+	// Get current page
+	pageStr := req.URL.Query().Get("page")
+	page := 1
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
 		}
-		tpl.ExecuteTemplate(res, "viewListing.html", templateinput)
-	} else {
-		templateinput := struct {
-			User         user
-			Records      []item
-			UserBalances userBalance
-		}{
-			User:         u,
-			Records:      searchRecords,
-			UserBalances: uBalance,
-		}
-		tpl.ExecuteTemplate(res, "viewListing.html", templateinput)
-
 	}
+	const pageSize = 20
+
+	// Check if any filters are applied
+	filtered := req.FormValue("searchKey") != "" || req.FormValue("categoryKey") != "" || req.FormValue("minprice") != "" || req.FormValue("maxprice") != ""
+
+	var records []item
+	var totalItems int
+	if filtered {
+		records, totalItems = SearchRecords(res, req, page, pageSize)
+	} else {
+		records, totalItems = DisplayAllRecords(res, req, page, pageSize)
+	}
+
+	totalPages := int(math.Ceil(float64(totalItems) / float64(pageSize)))
+
+	templateinput := struct {
+		User         user
+		Records      []item
+		UserBalances userBalance
+		UserCart     userCart
+		Page         int
+		TotalPage    int
+		SearchKey    string
+		CategoryKey  string
+		MinPrice     string
+		MaxPrice     string
+	}{
+		User:         u,
+		Records:      records,
+		UserBalances: uBalance,
+		UserCart:     uCart,
+		Page:         page,
+		TotalPage:    totalPages,
+		SearchKey:    req.FormValue("searchKey"),
+		CategoryKey:  req.FormValue("categoryKey"),
+		MinPrice:     req.FormValue("minprice"),
+		MaxPrice:     req.FormValue("maxprice"),
+	}
+
+	tpl.ExecuteTemplate(res, "viewListing.html", templateinput)
 }
 
 func detailListing(res http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodPost {
-		formType := req.FormValue("formType")
-		switch formType {
+		action := req.FormValue("action")
+		switch action {
 		case "Search":
 			//get form values
 			key := req.FormValue("searchKey")
 			http.Redirect(res, req, "/viewListing?searchKey="+url.QueryEscape(key)+"&minprice=&maxprice=&categoryKey=", http.StatusSeeOther)
 			return
-		case "addToCart":
+		case "buyNow", "addtoCart":
 			if AlreadyLoggedin(req) {
 				u := getUser(res, req)
 				record := Handler(res, req)
 				uBalance := getUserWithBalance(res, req)
+				uCart := getUserWithCart(res, req)
 
 				ctx := req.Context()
 				database := ConnectDB(ctx).Database("shoppeeDB")
+				balances := database.Collection("Balances")
 				cartCollection := database.Collection("Carts")
 
 				username := u.Username
 				quantityStr := req.FormValue("quantity")
-
 				quantity, err := strconv.Atoi(quantityStr)
 				if err != nil || quantity <= 0 {
 					log.Println("Invalid quantity value")
@@ -519,58 +673,127 @@ func detailListing(res http.ResponseWriter, req *http.Request) {
 					return
 				}
 
-				// Step 1: Check if the user already has a cart with the same screenshot
-				filter := bson.M{"username": username, "items.screenshot": record.Screenshot}
-				update := bson.M{
-					"$inc": bson.M{"items.$.quantity": quantity}, // Increment the quantity if it exists
-				}
-
-				result, err := cartCollection.UpdateOne(ctx, filter, update)
-				if err != nil {
-					log.Printf("Error updating cart: %v", err)
-					http.Error(res, "Failed to update cart", http.StatusInternalServerError)
-					return
-				}
-
-				// Step 2: If no matching screenshot, add a new item to the cart
-				if result.MatchedCount == 0 {
-					filter = bson.M{"username": username}
-					update = bson.M{
-						"$setOnInsert": bson.M{"username": username}, // Create cart if it does not exist
-						"$push": bson.M{"items": bson.M{
-							"name":       record.Name,
-							"screenshot": record.Screenshot,
-							"price":      record.Price,
-							"quantity":   quantity,
-							"category":   record.Category,
-							"seller":     record.Seller,
-						}},
-					}
-
-					_, err = cartCollection.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
-					if err != nil {
-						log.Printf("Error adding new item to cart: %v", err)
-						http.Error(res, "Failed to add item to cart", http.StatusInternalServerError)
+				if action == "buyNow" {
+					// BUY NOW FLOW
+					total := record.Price * quantity
+					if uBalance.Balance < total {
+						http.Error(res, "Insufficient balance", http.StatusBadRequest)
 						return
 					}
-				}
 
-				log.Println("Item added to cart successfully")
-				successMessage := "Item added to cart successfully!"
-				templateinput := struct {
-					User           user
-					Record         item
-					UserBalances   userBalance
-					SuccessMessage string
-				}{
-					User:           u,
-					Record:         record,
-					UserBalances:   uBalance,
-					SuccessMessage: successMessage,
-				}
+					// Deduct buyer's balance
+					_, err := balances.UpdateOne(ctx, bson.M{"username": u.Username}, bson.M{
+						"$inc": bson.M{"balance": -total},
+					})
+					if err != nil {
+						http.Error(res, "Failed to deduct balance", http.StatusInternalServerError)
+						return
+					}
 
-				tpl.ExecuteTemplate(res, "detailListing.html", templateinput)
-				return
+					// Credit seller's balance
+					_, err = balances.UpdateOne(ctx, bson.M{"username": record.Seller}, bson.M{
+						"$inc": bson.M{"balance": total},
+					})
+					if err != nil {
+						http.Error(res, "Failed to credit seller", http.StatusInternalServerError)
+						return
+					}
+
+					log.Println("Buy now success")
+					successMessage := "Purchase successful!"
+					historyCollection := database.Collection("Histories")
+
+					purchaseRecord := bson.M{
+						"username": u.Username,
+						"items": []bson.M{
+							{
+								"name":     record.Name,
+								"price":    record.Price,
+								"quantity": quantity,
+								"seller":   record.Seller,
+							},
+						},
+						"total":       total,
+						"purchasedAt": time.Now(),
+					}
+
+					_, err = historyCollection.InsertOne(ctx, purchaseRecord)
+					if err != nil {
+						log.Println("Failed to record purchase history:", err)
+					}
+
+					uBalance = getUserWithBalance(res, req) // refresh balance
+
+					templateinput := struct {
+						User           user
+						Record         item
+						UserBalances   userBalance
+						UserCart       userCart
+						SuccessMessage string
+					}{
+						User:           u,
+						Record:         record,
+						UserBalances:   uBalance,
+						UserCart:       uCart,
+						SuccessMessage: successMessage,
+					}
+					tpl.ExecuteTemplate(res, "detailListing.html", templateinput)
+					return
+				} else {
+					// ADD TO CART FLOW
+					filter := bson.M{"username": username, "items.screenshot": record.Screenshot}
+					update := bson.M{
+						"$inc": bson.M{"items.$.quantity": quantity},
+					}
+
+					result, err := cartCollection.UpdateOne(ctx, filter, update)
+					if err != nil {
+						log.Printf("Error updating cart: %v", err)
+						http.Error(res, "Failed to update cart", http.StatusInternalServerError)
+						return
+					}
+
+					if result.MatchedCount == 0 {
+						filter = bson.M{"username": username}
+						update = bson.M{
+							"$setOnInsert": bson.M{"username": username},
+							"$push": bson.M{"items": bson.M{
+								"name":       record.Name,
+								"screenshot": record.Screenshot,
+								"price":      record.Price,
+								"quantity":   quantity,
+								"category":   record.Category,
+								"seller":     record.Seller,
+							}},
+						}
+
+						_, err = cartCollection.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+						if err != nil {
+							log.Printf("Error adding new item to cart: %v", err)
+							http.Error(res, "Failed to add item to cart", http.StatusInternalServerError)
+							return
+						}
+					}
+
+					log.Println("Item added to cart successfully")
+					successMessage := "Item added to cart successfully!"
+					templateinput := struct {
+						User           user
+						Record         item
+						UserBalances   userBalance
+						UserCart       userCart
+						SuccessMessage string
+					}{
+						User:           u,
+						Record:         record,
+						UserBalances:   uBalance,
+						UserCart:       uCart,
+						SuccessMessage: successMessage,
+					}
+
+					tpl.ExecuteTemplate(res, "detailListing.html", templateinput)
+					return
+				}
 			} else {
 				http.Redirect(res, req, "/login", http.StatusSeeOther)
 				return
@@ -578,23 +801,166 @@ func detailListing(res http.ResponseWriter, req *http.Request) {
 
 		default:
 			http.Error(res, "Invalid form submission", http.StatusBadRequest)
+			return
 		}
-
 	}
+
+	// GET method handler — load the item normally
 	u := getUser(res, req)
 	record := Handler(res, req)
 	uBalance := getUserWithBalance(res, req)
+	uCart := getUserWithCart(res, req)
 
 	templateinput := struct {
 		User         user
 		Record       item
 		UserBalances userBalance
+		UserCart     userCart
 	}{
 		User:         u,
 		Record:       record,
 		UserBalances: uBalance,
+		UserCart:     uCart,
 	}
 	tpl.ExecuteTemplate(res, "detailListing.html", templateinput)
+}
+
+func historyBuy(res http.ResponseWriter, req *http.Request) {
+	if !AlreadyLoggedin(req) {
+		http.Redirect(res, req, "/", http.StatusSeeOther)
+		return
+	}
+
+	ctx := req.Context()
+	database := ConnectDB(ctx).Database("shoppeeDB")
+	historyCollection := database.Collection("Histories")
+	userCollection := database.Collection("Users")
+
+	u := getUser(res, req)
+	uBalance := getUserWithBalance(res, req)
+	uCart := getUserWithCart(res, req)
+
+	message := ""
+
+	if req.Method == http.MethodPost {
+		if req.FormValue("searchKey") != "" {
+			key := req.FormValue("searchKey")
+			http.Redirect(res, req, "/viewListing?searchKey="+url.QueryEscape(key)+"&minprice=&maxprice=&categoryKey=", http.StatusSeeOther)
+			return
+		}
+
+		oldPassword := req.FormValue("oldPassword")
+		newPassword := req.FormValue("password")
+		newUsername := req.FormValue("name")
+		log.Println(oldPassword)
+		log.Println(newPassword)
+		log.Println(newUsername)
+		// Find user
+		var foundUser struct {
+			Username string `bson:"username"`
+			Password string `bson:"password"`
+		}
+		log.Println("start")
+
+		err := userCollection.FindOne(ctx, bson.M{"username": u.Username}).Decode(&foundUser)
+		if err != nil {
+			log.Println("User not found:", err)
+			http.Error(res, "User not found", http.StatusInternalServerError)
+			return
+		}
+
+		// Check old password
+		if foundUser.Password != oldPassword {
+			log.Println("Old password is incorrect.", err)
+			message = "Old password is incorrect."
+
+		} else {
+			// Update in MongoDB
+			update := bson.M{
+				"$set": bson.M{
+					"password": newPassword,
+					"username": newUsername,
+				},
+			}
+			log.Println("end")
+			_, err := userCollection.UpdateOne(ctx, bson.M{"username": u.Username}, update)
+			if err != nil {
+				log.Println("Failed to update user:", err)
+				message = "Failed to update account."
+			} else {
+				message = "Account updated successfully."
+
+				// Update in-memory dbUsers and dbSessions
+				cookie, err := req.Cookie("session")
+				if err == nil {
+					sessionID := cookie.Value
+					oldUsername := dbSessions[sessionID]
+
+					// Update dbUsers map
+					userData := dbUsers[oldUsername]
+					delete(dbUsers, oldUsername) // remove old username
+					userData.Username = newUsername
+					userData.Password = newPassword
+					dbUsers[newUsername] = userData
+
+					// Update dbSessions map
+					dbSessions[sessionID] = newUsername
+				}
+			}
+		}
+	}
+
+	log.Println("Start loading purchase history...")
+
+	type historyDocument struct {
+		Username    string     `bson:"username"`
+		Items       []cartItem `bson:"items"`
+		Total       int        `bson:"total"`
+		PurchasedAt time.Time  `bson:"purchasedAt"`
+	}
+
+	cursor, err := historyCollection.Find(ctx, bson.M{"username": u.Username})
+	if err != nil {
+		log.Println("Error finding history:", err)
+		http.Error(res, "Failed to load history", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var historyDocs []historyDocument
+	if err := cursor.All(ctx, &historyDocs); err != nil {
+		log.Println("Error decoding history:", err)
+		http.Error(res, "Failed to decode history", http.StatusInternalServerError)
+		return
+	}
+
+	var historiesItems []cartItem
+	for _, doc := range historyDocs {
+		for _, item := range doc.Items {
+			log.Printf("Purchased item: %s (Screenshot: %s, Quantity: %d)", item.Name, item.Screenshot, item.Quantity)
+			historiesItems = append(historiesItems, item)
+		}
+	}
+
+	templateInput := struct {
+		User           user
+		UserBalances   userBalance
+		UserCart       userCart
+		HistoriesItems []cartItem
+		Message        string
+	}{
+		User:           u,
+		UserBalances:   uBalance,
+		UserCart:       uCart,
+		HistoriesItems: historiesItems,
+		Message:        message,
+	}
+
+	err = tpl.ExecuteTemplate(res, "historyBuy.html", templateInput)
+	if err != nil {
+		log.Println("Template execution error:", err)
+		http.Error(res, "Failed to render page", http.StatusInternalServerError)
+	}
 }
 
 func getUser(res http.ResponseWriter, req *http.Request) user {
@@ -639,206 +1005,113 @@ func ConnectDB(ctx context.Context) *mongo.Client {
 	return client
 }
 
-func DisplayAllRecords(res http.ResponseWriter, req *http.Request) []item {
-
-	// save db
+func DisplayAllRecords(res http.ResponseWriter, req *http.Request, page int, pageSize int) ([]item, int) {
 	ctx := req.Context()
 	database := ConnectDB(ctx).Database("shoppeeDB")
 	shopcollection := database.Collection("Items")
 
-	//find records
-	//pass these options to the Find method
-	findOptions := options.Find()
-	//Set the limit of the number of record to find
-	findOptions.SetLimit(20)
-	//Define an array in which you can store the decoded documents
-	var results []item
-
-	//Passing the bson.D{{}} as the filter matches  documents in the collection
-	cur, err := shopcollection.Find(ctx, bson.D{{}}, findOptions)
+	// Get total count
+	totalCount, err := shopcollection.CountDocuments(ctx, bson.D{{}})
 	if err != nil {
 		log.Fatal(err)
 	}
-	//Finding multiple documents returns a cursor
-	//Iterate through the cursor allows us to decode documents one at a time
 
-	for cur.Next(ctx) {
-		//Create a value into which the single document can be decoded
-		var elem item
-		err := cur.Decode(&elem)
-		if err != nil {
-			log.Fatal(err)
-		}
-		results = append(results, elem)
-	}
+	// Set pagination options
+	opts := options.Find()
+	opts.SetSkip(int64((page - 1) * pageSize))
+	opts.SetLimit(int64(pageSize))
 
-	if err := cur.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	//Close the cursor once finished
-	cur.Close(context.TODO())
-	// fmt.Printf("Found multiple documents: %+v\n", results)
-	// fmt.Println()
-	return results
-}
-
-func SearchRecords(res http.ResponseWriter, req *http.Request) []item {
-	//save db
-	ctx := req.Context()
-	database := ConnectDB(ctx).Database("shoppeeDB")
-	shopcollection := database.Collection("Items")
-	var allResults [][]item // A slice of slices to store results of each filter
-	searchPerformed := 0    // Counter to check how many search criteria are used
-
-	// <!-- ======================================== -->
-	// <!-- ========== FROM SEARCHBAR ============== -->
-	// <!-- ======================================== -->
-	//get user input
-	searchKey := req.FormValue("searchKey")
-	fmt.Println(searchKey)
-	if searchKey != "" {
-		// create index on db (exist only 1, can change on db in index tab)
-		model := mongo.IndexModel{Keys: bson.D{{"name", "text"}}}
-		name, err := shopcollection.Indexes().CreateOne(ctx, model)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println("Name of index created: " + name)
-
-		//filter and find
-		filter := bson.D{{"$text", bson.D{{"$search", searchKey}}}}
-		cursor, err := shopcollection.Find(ctx, filter)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		var results []item
-		if err = cursor.All(ctx, &results); err != nil {
-			log.Fatal(err)
-		}
-
-		// fmt.Printf("Found multiple documents: %+v\n", results)
-		allResults = append(allResults, results)
-		searchPerformed++
-		fmt.Println(allResults)
-	}
-	// fmt.Println(results)
-	// <!-- ======================================== -->
-	// <!-- ========== FROM CATEGORY =============== -->
-	// <!-- ======================================== -->
-	categoryKey := req.FormValue("categoryKey")
-	fmt.Println(categoryKey)
-	if categoryKey != "" {
-		//filter and find
-		filter := bson.D{{"category", categoryKey}}
-		// opts := options.Find().SetSort(bson.D{{"price", -1}})
-		cursor, err := shopcollection.Find(ctx, filter)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		var results []item
-		if err = cursor.All(ctx, &results); err != nil {
-			log.Fatal(err)
-		}
-
-		// fmt.Printf("Found multiple documents: %+v\n", results)
-		allResults = append(allResults, results)
-		searchPerformed++
-		fmt.Println(allResults)
-
-	}
-
-	// <!-- ======================================== -->
-	// <!-- ========== FROM TAB ==================== -->
-	// <!-- ======================================== -->
-	//
-	//
-	//
-	// <!-- ======================================== -->
-	// <!-- ========== FROM PRICE ================== -->
-	// <!-- ======================================== -->
-	minPriceStr := req.FormValue("minprice")
-	maxPriceStr := req.FormValue("maxprice")
-
-	// Convert minPrice and maxPrice to integers
-	minPrice, err := strconv.Atoi(minPriceStr)
-	if err != nil && minPriceStr != "" {
-		log.Fatal("Invalid min price:", err)
-	}
-
-	maxPrice := 9999999999999 // Default max price
-	if maxPriceStr != "" {
-		maxPrice, err = strconv.Atoi(maxPriceStr)
-		if err != nil {
-			log.Fatal("Invalid max price:", err)
-		}
-	}
-
-	// Construct MongoDB filter
-	filter := bson.M{}
-	if minPrice > 0 {
-		filter["price"] = bson.M{"$gte": minPrice}
-	}
-	if maxPrice < 9999999999999 {
-		if filter["price"] != nil {
-			filter["price"].(bson.M)["$lte"] = maxPrice
-		} else {
-			filter["price"] = bson.M{"$lte": maxPrice}
-		}
-	}
-
-	// Query MongoDB
-	cursor, err := shopcollection.Find(ctx, filter)
+	cursor, err := shopcollection.Find(ctx, bson.D{{}}, opts)
 	if err != nil {
-		log.Fatalf("Failed to execute query: %v", err)
+		log.Fatal(err)
 	}
 
 	var results []item
 	if err = cursor.All(ctx, &results); err != nil {
-		log.Fatalf("Failed to decode results: %v", err)
+		log.Fatal(err)
 	}
 
-	// Append results
-	allResults = append(allResults, results)
-	if minPrice != 0 || maxPrice != 9999999999999 {
-		searchPerformed++
-	}
-	fmt.Println(allResults)
-
-	// <!-- ======================================== -->
-	// <!-- ========== SORT PRICE ================== -->
-	// <!-- ======================================== -->
-
-	// Find common items across all search results
-	commonResults := findCommonItems(allResults, searchPerformed)
-	return commonResults
+	return results, int(totalCount)
 }
 
-func findCommonItems(allResults [][]item, searchPerformed int) []item {
-	itemCount := make(map[string]int)
-	uniqueItems := make(map[string]item)
+func getTotalItems() int64 {
+	ctx := context.TODO()
+	database := ConnectDB(ctx).Database("shoppeeDB")
+	shopcollection := database.Collection("Items")
 
-	for _, results := range allResults {
-		for _, itm := range results {
-			// Assuming Name is a unique identifier; otherwise, use a different unique field
-			if _, exists := uniqueItems[itm.Screenshot]; !exists {
-				uniqueItems[itm.Screenshot] = itm
-			}
-			itemCount[itm.Screenshot]++
+	count, err := shopcollection.CountDocuments(ctx, bson.D{{}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	return count
+}
+
+func SearchRecords(res http.ResponseWriter, req *http.Request, page int, pageSize int) ([]item, int) {
+	ctx := req.Context()
+	database := ConnectDB(ctx).Database("shoppeeDB")
+	shopcollection := database.Collection("Items")
+
+	var filters bson.D
+
+	// Search bar
+	searchKey := req.FormValue("searchKey")
+	if searchKey != "" {
+		filters = append(filters, bson.E{Key: "$text", Value: bson.D{{Key: "$search", Value: searchKey}}})
+	}
+
+	// Category
+	categoryKey := req.FormValue("categoryKey")
+	if categoryKey != "" {
+		filters = append(filters, bson.E{Key: "category", Value: categoryKey})
+	}
+
+	// Price
+	minPriceStr := req.FormValue("minprice")
+	maxPriceStr := req.FormValue("maxprice")
+	priceFilter := bson.D{}
+
+	if minPriceStr != "" {
+		if minPrice, err := strconv.Atoi(minPriceStr); err == nil {
+			priceFilter = append(priceFilter, bson.E{Key: "$gte", Value: minPrice})
 		}
 	}
 
-	// Collect items that appear in all search results
-	var commonResults []item
-	for name, count := range itemCount {
-		if count == searchPerformed {
-			commonResults = append(commonResults, uniqueItems[name])
+	if maxPriceStr != "" {
+		if maxPrice, err := strconv.Atoi(maxPriceStr); err == nil {
+			priceFilter = append(priceFilter, bson.E{Key: "$lte", Value: maxPrice})
 		}
 	}
 
-	return commonResults
+	if len(priceFilter) > 0 {
+		filters = append(filters, bson.E{Key: "price", Value: priceFilter})
+	}
+
+	// Count total matching items
+	totalCount, err := shopcollection.CountDocuments(ctx, bson.D(filters))
+	if err != nil {
+		log.Printf("Failed to count documents: %v", err)
+		return nil, 0
+	}
+
+	// Add skip & limit for pagination
+	opts := options.Find()
+	opts.SetSkip(int64((page - 1) * pageSize))
+	opts.SetLimit(int64(pageSize))
+
+	// Final find query
+	cursor, err := shopcollection.Find(ctx, bson.D(filters), opts)
+	if err != nil {
+		log.Printf("Failed to query database: %v", err)
+		return nil, 0
+	}
+
+	var results []item
+	if err := cursor.All(ctx, &results); err != nil {
+		log.Printf("Failed to decode results: %v", err)
+		return nil, 0
+	}
+
+	return results, int(totalCount)
 }
 
 func getUserWithBalance(res http.ResponseWriter, req *http.Request) userBalance {
@@ -865,25 +1138,32 @@ func getUserWithBalance(res http.ResponseWriter, req *http.Request) userBalance 
 }
 
 func getUserWithCart(res http.ResponseWriter, req *http.Request) userCart {
-
-	// Connect to the database
 	u := getUser(res, req)
 	if u.Username == "" {
 		return userCart{}
 	}
+
 	ctx := req.Context()
 	database := ConnectDB(ctx).Database("shoppeeDB")
 	shopcollection := database.Collection("Carts")
 
-	// Query the database for the user's balance
 	filter := bson.D{{"username", u.Username}}
 	var result userCart
 	err := shopcollection.FindOne(ctx, filter).Decode(&result)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("No cart found or error decoding:", err)
+		return userCart{}
 	}
 
-	// Return user with balance
+	// Count total items in cart
+	totalItems := 0
+	for _, item := range result.CartItems {
+		totalItems += item.Quantity
+	}
+
+	// Add that count to the result
+	result.TotalItems = totalItems
+
 	return result
 }
 
